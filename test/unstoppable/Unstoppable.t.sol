@@ -91,7 +91,31 @@ contract UnstoppableChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_unstoppable() public checkSolvedByPlayer {
+        /**
+         * The vulnerability in the UnstoppableVault contract has a critical check in the flashLoan function
+         * 
+         * if (convertToShares(totalSupply) != balanceBefore) revert InvalidBalance();
+         * 
+         * This line of code is intended to ensure that the amount of tokens the vault thinks it has (calculated by converting the totalSupply of shares back into token units) matches the actual token balance (balanceBefore) held by the contract. 
+         * 
+         * totalSupply represents the total number of shares that have been issued by the vault. These shares are proportional to the amount of the underlying token (asset) deposited by users.
+         * 
+         * convertToShares(totalSupply) converts the total shares back into the equivalent amount of tokens, based on the current share-to-token conversion rate.
+         * 
+         * balanceBefore is the actual balance of tokens held by the vault at the time the flash loan is requested.
+         * 
+         * 
+         * Normally, every deposit into the vault results in new shares being minted, and every withdrawal results in shares being burned, ensuring that totalSupply of shares and the actual token balance remain aligned.
+         * 
+         * However, if tokens are directly transferred to the vault's address without going through the vault's deposit function (i.e., without minting new shares), this alignment is disrupted. The totalAssets() (reflected by balanceBefore) increases due to the additional tokens, but the totalSupply remains unchanged because no new shares were issued for the transferred tokens.
+         */
         
+        token.transfer(address(vault), 123);
+        /**
+         * Demonstrates this exploit by directly transferring 123 tokens to the vault. This increases the totalAssets() without affecting the totalSupply, thereby ensuring that convertToShares(totalSupply) will not equal balanceBefore.
+         * 
+         * When a flash loan request is made after this direct transfer it causes the InvalidBalance revert condition to trigger, thereby failing the flash loan.
+         */
     }
 
     /**

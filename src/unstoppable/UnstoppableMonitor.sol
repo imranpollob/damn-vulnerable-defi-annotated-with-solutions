@@ -9,6 +9,9 @@ import {UnstoppableVault, ERC20} from "../unstoppable/UnstoppableVault.sol";
 /**
  * @notice Permissioned contract for on-chain monitoring of the vault's flashloan feature.  
  */
+// monitors and interacts with a separate UnstoppableVault contract to manage flash loans
+// IERC3156FlashBorrower: Imported from OpenZeppelin, this interface allows the contract to handle flash loans according to the ERC-3156 standard.
+// Owned: A contract from the solmate library that manages basic ownership functionality, allowing certain actions to be restricted to the contract owner.
 contract UnstoppableMonitor is Owned, IERC3156FlashBorrower {
     UnstoppableVault private immutable vault;
 
@@ -20,6 +23,7 @@ contract UnstoppableMonitor is Owned, IERC3156FlashBorrower {
         vault = UnstoppableVault(_vault);
     }
 
+    // This function is called automatically when a flash loan is initiated. It serves as a callback function conforming to the IERC3156FlashBorrower interface.
     function onFlashLoan(address initiator, address token, uint256 amount, uint256 fee, bytes calldata)
         external
         returns (bytes32)
@@ -28,11 +32,15 @@ contract UnstoppableMonitor is Owned, IERC3156FlashBorrower {
             revert UnexpectedFlashLoan();
         }
 
+        // Approves the vault to handle the specified amount of tokens for the loan.
         ERC20(token).approve(address(vault), amount);
 
+        // Returns a hash of a predefined string as required by the flash loan standard to signal successful handling.
         return keccak256("IERC3156FlashBorrower.onFlashLoan");
     }
 
+
+    // Allows the owner to initiate a check on the vault's ability to handle a flash loan.
     function checkFlashLoan(uint256 amount) external onlyOwner {
         require(amount > 0);
 
