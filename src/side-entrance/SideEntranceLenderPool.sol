@@ -17,6 +17,7 @@ contract SideEntranceLenderPool {
     event Withdraw(address indexed who, uint256 amount);
 
     function deposit() external payable {
+        // The addition is done in an unchecked block, meaning it won’t revert on overflow
         unchecked {
             balances[msg.sender] += msg.value;
         }
@@ -24,8 +25,9 @@ contract SideEntranceLenderPool {
     }
 
     function withdraw() external {
+        // Retrieves the caller’s deposited balance.
         uint256 amount = balances[msg.sender];
-
+        // Resets their balance to zero (using delete).
         delete balances[msg.sender];
         emit Withdraw(msg.sender, amount);
 
@@ -34,7 +36,9 @@ contract SideEntranceLenderPool {
 
     function flashLoan(uint256 amount) external {
         uint256 balanceBefore = address(this).balance;
-
+        // Call the execute() function on the caller 
+        // (who must implement the IFlashLoanEtherReceiver interface), 
+        // sending the requested amount of ETH.
         IFlashLoanEtherReceiver(msg.sender).execute{value: amount}();
 
         if (address(this).balance < balanceBefore) {
