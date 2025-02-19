@@ -154,8 +154,8 @@ contract TheRewarderChallenge is Test {
      * draining the contract's funds beyond their legitimate share.
      */
     function test_theRewarder() public checkSolvedByPlayer {
-        uint PLAYER_DVT_CLAIM_AMOUNT = 4835806954833022;
-        uint PLAYER_WETH_CLAIM_AMOUNT = 1215097135138887;
+        uint PLAYER_DVT_CLAIM_AMOUNT = 11524763827831882;
+        uint PLAYER_WETH_CLAIM_AMOUNT = 1171088749244340;
 
         bytes32[] memory dvtLeaves = _loadRewards(
             "/test/the-rewarder/dvt-distribution.json"

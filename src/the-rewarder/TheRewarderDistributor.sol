@@ -141,7 +141,7 @@ contract TheRewarderDistributor {
      * This line is responsible for updating the bitmap and marking claims as processed. 
      * However, the issue is when and how often this check is performed.
      * 
-     * claimRewards accumulates multiple claims for the same token and batch before calling _setClaimed.
+     * claimRewards() accumulates multiple claims for the same token and batch before calling _setClaimed.
      * For example, if there are 10 identical claims for the same token and batch, the function will:
      * - Accumulate the bitsSet and amount for all 10 claims.
      * - Only call _setClaimed once after processing all 10 claims.
