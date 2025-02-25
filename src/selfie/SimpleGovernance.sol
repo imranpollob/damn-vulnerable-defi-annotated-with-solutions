@@ -8,11 +8,20 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 contract SimpleGovernance is ISimpleGovernance {
     using Address for address;
-
+    // Defines the delay period before a governance action can be executed
     uint256 private constant ACTION_DELAY_IN_SECONDS = 2 days;
 
     DamnValuableVotes private _votingToken;
+    // A counter to track the number of governance actions.
     uint256 private _actionCounter;
+    // A mapping to store GovernanceAction structs, indexed by action ID
+    /**struct GovernanceAction {
+        uint128 value;
+        uint64 proposedAt;
+        uint64 executedAt;
+        address target;
+        bytes data;
+    } */
     mapping(uint256 => GovernanceAction) private _actions;
 
     constructor(DamnValuableVotes votingToken) {
@@ -20,7 +29,9 @@ contract SimpleGovernance is ISimpleGovernance {
         _actionCounter = 1;
     }
 
+    // Allows users with enough votes to propose a governance action
     function queueAction(address target, uint128 value, bytes calldata data) external returns (uint256 actionId) {
+        // Checks if the proposer has enough voting power (more than half of the total voting token supply)
         if (!_hasEnoughVotes(msg.sender)) {
             revert NotEnoughVotes(msg.sender);
         }
@@ -33,6 +44,7 @@ contract SimpleGovernance is ISimpleGovernance {
             revert TargetMustHaveCode();
         }
 
+        // stores the action details in _actions
         actionId = _actionCounter;
 
         _actions[actionId] = GovernanceAction({
@@ -50,7 +62,9 @@ contract SimpleGovernance is ISimpleGovernance {
         emit ActionQueued(actionId, msg.sender);
     }
 
+    // Allows anyone to execute a queued action after the delay period has passed.
     function executeAction(uint256 actionId) external payable returns (bytes memory) {
+        // Checks if the action is ready to be executed (delay has passed and not executed yet).
         if (!_canBeExecuted(actionId)) {
             revert CannotExecute(actionId);
         }
@@ -60,6 +74,7 @@ contract SimpleGovernance is ISimpleGovernance {
 
         emit ActionExecuted(actionId, msg.sender);
 
+        // Calls the target contract with the provided data and value.
         return actionToExecute.target.functionCallWithValue(actionToExecute.data, actionToExecute.value);
     }
 
@@ -97,6 +112,7 @@ contract SimpleGovernance is ISimpleGovernance {
         return actionToExecute.executedAt == 0 && timeDelta >= ACTION_DELAY_IN_SECONDS;
     }
 
+    // Checks if a given address (who) has more than half of the total supply of voting tokens delegated to them.
     function _hasEnoughVotes(address who) private view returns (bool) {
         uint256 balance = _votingToken.getVotes(who);
         uint256 halfTotalSupply = _votingToken.totalSupply() / 2;
