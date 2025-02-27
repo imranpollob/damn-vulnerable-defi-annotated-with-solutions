@@ -1,4 +1,13 @@
-# Damn Vulnerable DeFi
+# Damn Vulnerable DeFi Annotated With Solution
+
+Solution Videos:
+1. [Challenge 1](https://www.loom.com/share/4cd1c77826304a3ebfd0a406ba0ac12e?sid=ff81422e-1a41-47ef-99d0-4ae14b0c1e08)
+2. [Challenge 2](https://www.loom.com/share/780e1e61d1f14d9db39ee446b79eb0f6?sid=cedfaf07-a8d0-4519-84d5-9cb10959bd62)
+3. [Challenge 3](https://www.loom.com/share/8db8769aa727469b9277436438518c4e?sid=1412d2d5-66d4-46fe-961b-9ab17fcc417a)
+4. [Challenge 4](https://www.loom.com/share/b6c4757daf8a403cbd4ddc20e3abc2ca?sid=63a9c4b6-a6d4-4322-bb1f-cd6c7b8d6e85)
+5. [Challenge 5](https://www.loom.com/share/3e50478a955446f597a3a6902eb49708?sid=a5684008-f829-4d63-9948-92fd0f06b65d)
+6. [Challenge 6](https://www.loom.com/share/04e85407c4ff465595c2f74193c9b5b9?sid=abf26c91-fc6e-4e55-ad82-3653f2ed1613)
+7. [Challenge 7](https://www.loom.com/share/b50cd4f869fb4fc3800528c83b6f8d07?sid=d928a69e-c7dd-40d6-b6fa-55e6c7fbd13b)
 
 Damn Vulnerable DeFi is _the_ smart contract security playground for developers, security researchers and educators.
 
