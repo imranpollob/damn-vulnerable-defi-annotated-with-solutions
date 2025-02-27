@@ -11,10 +11,13 @@ import {LibSort} from "solady/utils/LibSort.sol";
  */
 contract TrustfulOracle is AccessControlEnumerable {
     uint256 public constant MIN_SOURCES = 1;
+    // Role granted to addresses that are allowed to report prices.
     bytes32 public constant TRUSTED_SOURCE_ROLE = keccak256("TRUSTED_SOURCE_ROLE");
+    //  Role granted temporarily to the deployer to set up initial prices.
     bytes32 public constant INITIALIZER_ROLE = keccak256("INITIALIZER_ROLE");
 
     // Source address => (symbol => price)
+    // A nested mapping to store prices reported by each trusted source for each symbol.
     mapping(address => mapping(string => uint256)) private _pricesBySource;
 
     error NotEnoughSources();
@@ -27,11 +30,13 @@ contract TrustfulOracle is AccessControlEnumerable {
         }
         for (uint256 i = 0; i < sources.length;) {
             unchecked {
+                // Grants TRUSTED_SOURCE_ROLE to provided addresses
                 _grantRole(TRUSTED_SOURCE_ROLE, sources[i]);
                 ++i;
             }
         }
         if (enableInitialization) {
+            // Grants INITIALIZER_ROLE to the deployer if enabled
             _grantRole(INITIALIZER_ROLE, msg.sender);
         }
     }
@@ -45,18 +50,23 @@ contract TrustfulOracle is AccessControlEnumerable {
         require(sources.length == symbols.length && symbols.length == prices.length);
         for (uint256 i = 0; i < sources.length;) {
             unchecked {
+                // Sets initial prices for each source and symbol
                 _setPrice(sources[i], symbols[i], prices[i]);
                 ++i;
             }
         }
+
+        // Revokes INITIALIZER_ROLE after initial setup
         renounceRole(INITIALIZER_ROLE, msg.sender);
     }
 
     function postPrice(string calldata symbol, uint256 newPrice) external onlyRole(TRUSTED_SOURCE_ROLE) {
+        // Allows trusted sources to update prices
         _setPrice(msg.sender, symbol, newPrice);
     }
 
     function getMedianPrice(string calldata symbol) external view returns (uint256) {
+        // Returns the median price for a symbol
         return _computeMedianPrice(symbol);
     }
 
@@ -65,6 +75,7 @@ contract TrustfulOracle is AccessControlEnumerable {
         prices = new uint256[](numberOfSources);
         for (uint256 i = 0; i < numberOfSources;) {
             address source = getRoleMember(TRUSTED_SOURCE_ROLE, i);
+            // Retrieves all prices for a symbol from each source
             prices[i] = getPriceBySource(symbol, source);
             unchecked {
                 ++i;
@@ -78,18 +89,23 @@ contract TrustfulOracle is AccessControlEnumerable {
 
     function _setPrice(address source, string memory symbol, uint256 newPrice) private {
         uint256 oldPrice = _pricesBySource[source][symbol];
+        // Updates the price for a source and symbol
         _pricesBySource[source][symbol] = newPrice;
         emit UpdatedPrice(source, symbol, oldPrice, newPrice);
     }
 
     function _computeMedianPrice(string memory symbol) private view returns (uint256) {
+        // Gets all prices for the symbol
         uint256[] memory prices = getAllPricesForSymbol(symbol);
+        // Sorts the prices
         LibSort.insertionSort(prices);
         if (prices.length % 2 == 0) {
+            // Calculates median for even number of sources
             uint256 leftPrice = prices[(prices.length / 2) - 1];
             uint256 rightPrice = prices[prices.length / 2];
             return (leftPrice + rightPrice) / 2;
         } else {
+            // Calculates median for odd number of sources
             return prices[prices.length / 2];
         }
     }
