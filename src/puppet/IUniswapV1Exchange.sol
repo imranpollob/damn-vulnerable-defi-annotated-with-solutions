@@ -43,6 +43,15 @@ interface IUniswapV1Exchange {
     function tokenToEthSwapOutput(uint256 eth_bought, uint256 max_tokens, uint256 deadline)
         external
         returns (uint256 out);
+    /**
+     * Sells tokens_sold tokens to the pair, sends the resulting ETH to recipient.
+     * Applies a 0.3% fee (amount after fee is tokens_sold * 0.997).
+     * Updates pair reserves: increases token balance, decreases ETH balance.
+     * 
+     * Price Impact:
+     * Uniswap V1 uses a constant product formula: (token_reserve * eth_reserve) = k.
+     * Selling tokens increases token_reserve and decreases eth_reserve, lowering the token price.
+     */
     function tokenToEthTransferInput(uint256 tokens_sold, uint256 min_eth, uint256 deadline, address recipient)
         external
         returns (uint256 out);

