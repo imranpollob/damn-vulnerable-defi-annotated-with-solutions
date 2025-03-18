@@ -54,6 +54,7 @@ contract FreeRiderRecoveryManager is ReentrancyGuard, IERC721Receiver {
             revert StillNotOwningToken(_tokenId);
         }
 
+        // When all 6 tokens (IDs 0-5) have been received, a bounty is paid to an address specified in the _data parameter
         if (++received == 6) {
             address recipient = abi.decode(_data, (address));
             payable(recipient).sendValue(bounty);

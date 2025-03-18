@@ -10,6 +10,7 @@ Solution Videos:
 7. [Challenge 7](https://www.loom.com/share/b50cd4f869fb4fc3800528c83b6f8d07)
 8. [Challenge 8](https://www.loom.com/share/fc33292618474477842416c868d0de84)
 9. [Challenge 9](https://www.loom.com/share/8f9ef5f80e8b4aad94c3dc13142c9524)
+10. [Challenge 10](https://www.loom.com/share/a221bd57455640d3ac972de878b09099)
 
 Damn Vulnerable DeFi is _the_ smart contract security playground for developers, security researchers and educators.
 
